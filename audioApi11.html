@@ -1,0 +1,238 @@
+
+<!-- SandBox -->
+<!-- http://spacebrew.github.io/spacebrew/admin/admin.html?server=sandbox.spacebrew.cc -->
+
+<html>
+<meta charset="UTF-8">
+<head>
+	<script type="text/javascript" src="js/sb-1.4.1.js"></script>
+	<script src="js/three.min.js"></script>
+	<script src="js/STLLoader.js"></script>
+
+	<script src="js/Detector.js"></script>
+	<script src="js/stats.min.js"></script>
+</head>
+<style type="text/css">
+	#myBtn{
+		background-color: #00C6E3;
+		width:40px;
+		height:40px;
+		text-align: center;
+		line-height:20px;
+		color: #ffffff;
+	}
+
+	#control{
+		visibility: hidden;
+	}
+
+</style>
+<body>
+	<div id="control">
+		osc1 feq: 10<input type="range" id="feq1"  min="10" max="2000">2000<br>
+		osc2 feq: 10<input type="range" id="feq2"  min="10" max="2000">2000<br>
+		<br>
+		osc1 flt: 10<input type="range" id="flt1"  min="10" max="2000">2000<br>
+		osc2 dly: 0<input type="range" step="0.01" id="dly2"  min="0" max="3">3<br>
+	</div>
+	
+	<script type="text/javascript">
+
+
+	//...............Three js.....................
+	
+	var scene = new THREE.Scene();
+	var camera = new THREE.PerspectiveCamera( 50,window.innerWidth/window.innerHeight, 0.1, 1000 );
+	//(field of view，aspect ratio(canvas height and width)，near and far clipping plane )
+
+
+	var ro = .005;
+	//cube
+	var geometry = new THREE.BoxGeometry( 1, 1, 1 ); // length height width
+	var material = new THREE.MeshLambertMaterial( { color: 0xEBF74B, transparent: true, opacity:1 } ); //color
+	// { color: 0x3782D6,  wireframe: true, wireframeLinewidth: 20}
+	var cube = new THREE.Mesh( geometry, material ); //give the property
+	scene.add( cube );  //into the canvas
+
+	//light
+	light = new THREE.DirectionalLight( {color:0xdddddd });
+	light.position.set( 0, 1, 1 ); scene.add( light );
+	light = new THREE.AmbientLight( 0x112233); scene.add( light );
+	scene.add(light);
+	
+	//render
+	var renderer = new THREE.WebGLRenderer();
+	renderer.setSize( window.innerWidth, window.innerHeight );
+	document.body.appendChild( renderer.domElement );
+	// container = document.getElementById( 'container' );
+	// container.appendChild( renderer.domElement );
+
+
+
+	camera.position.z = 5;  //camera position z值
+
+	var render = function () {
+		requestAnimationFrame( render );
+
+		cube.rotation.x += ro;
+		cube.rotation.y += ro;
+
+		renderer.render(scene, camera);
+	};
+
+	render();
+
+
+
+	//...............Space Brew.....................
+
+
+
+	window.onload = function(){
+		setupSB();
+	}
+
+	var sb;
+
+	function setupSB(){
+		sb = new Spacebrew.Client();
+		sb.name( "XiaolongJs" );
+		sb.server = "sandbox.spacebrew.cc"
+
+
+		sb.addPublish("mouseX", "range", "0");
+		sb.addSubscribe("OSC1","range");
+		sb.addSubscribe("DLY","range");
+		sb.addSubscribe("TMPO","range");
+
+		// sb.addSubscribe("FILTER","string");
+		// sb.addSubscribe("DELAY","string");
+
+		sb.onRangeMessage = onRangeMessage;
+
+		sb.connect();
+
+		window.onmousemove = function( e ){
+			sb.send( "mouseX", "range", String(e.clientX)  );
+		}
+	}
+
+
+
+	function onRangeMessage(name,value){
+		if ( name == "OSC1"){
+			// document.body.style.background = value;
+			osc1.frequency.value = value;
+		} else if ( name=="DLY"){
+			delay.delayTime.value = value/300;
+		} else if ( name=="TMPO"){
+			tempo = value/10;
+			ro = value/2000;
+		}
+	}
+
+
+
+	//...............AUDIO API.....................
+
+
+	//if don't use the sb的input we can activate the sound by this button
+	// document.getElementById("myBtn").addEventListener("click", play);
+
+
+
+	var context = new AudioContext();
+
+	var osc1, osc2, filter ,output, delay, feedback;
+
+	var tempo = 1000;
+
+	setInterval(play,tempo);
+
+	var Synth = function(){
+
+
+	// if import sound source，use:   var source = context.createBufferSource();
+	osc1 = context.createOscillator();
+	osc2 = context.createOscillator();
+
+	filter = context.createBiquadFilter();
+	filter.type = "lowpass";
+	document.getElementById('flt1').addEventListener('change', function() {
+		filter.frequency.value = this.value;
+	});
+
+	delay = context.createDelay();
+	document.getElementById('dly2').addEventListener('change', function() {
+		delay.delayTime.value = this.value;
+	});
+	output = context.createGain();
+
+	var feedback = context.createGain();
+			feedback.gain.value = 0.6;   // feedback decay rate
+
+
+	// osc -----> filter -----> output -----> destination
+	osc1.connect(filter);
+	osc2.connect(output);
+	filter.connect(output);
+	output.connect(context.destination);//sound out goes to dectination
+
+
+	output.connect(delay); //sound output goes into loop
+	delay.connect(feedback); //delay goes into feedback
+	feedback.connect(delay);// feedback decrease the volume to 80%，return to delay
+	delay.connect(context.destination); //eachtime delay get the sound，it output the sound.
+
+
+	//setup for the osc
+
+	//OSC1
+	osc1.start();
+	osc1.type = 'square'; //"sine","square","sawtooth","triangle","custom"
+
+
+	document.getElementById('feq1').addEventListener('change', function() {
+		osc1.frequency.value = this.value;
+	});
+
+
+	//OSC2
+	osc2.start();
+	osc2.type = 'triangle';
+
+	document.getElementById('feq2').addEventListener('change', function() {
+		osc2.frequency.value = this.value;
+	});
+
+	output.gain.value = 0;
+
+	this.play = function(note, vel){
+		output.gain.cancelScheduledValues(context.currentTime);
+		//envelop
+		// output.gain.linearRampToValueAtTime(1.0,context.currentTime+0.1); //attack
+		// output.gain.linearRampToValueAtTime(0.7,context.currentTime+0.2);  //decay
+		// output.gain.linearRampToValueAtTime(0.5,context.currentTime+2.0);  //sustain
+		// output.gain.linearRampToValueAtTime(0.0,context.currentTime+2.0);  //release
+
+
+		output.gain.linearRampToValueAtTime(1.0,context.currentTime+0.1); //attack
+		output.gain.linearRampToValueAtTime(0.0,context.currentTime+0.5);  //release
+	}
+
+}
+
+
+
+var mySynth = new Synth();
+
+function play(){
+	mySynth.play();
+}
+
+//type " mySynth.play(); "
+
+
+	</script>
+</body>
+</html>
